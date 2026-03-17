@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MineStar Fleet — Symbology Engine Prototype</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0a0a; color: #e0e0e0; }
+
+    #map { width: 100%; height: 100%; }
+
+    /* ── HUD Overlay ── */
+    #bottom-left-stack {
+      position: absolute; left: 16px; bottom: 16px; z-index: 100;
+      display: flex; align-items: flex-end; gap: 12px;
+      pointer-events: none;
+    }
+    #hud {
+      position: relative;
+      display: flex; flex-direction: column; gap: 8px;
+      pointer-events: none;
+    }
+    .hud-panel {
+      background: rgba(10, 10, 10, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 12px;
+      line-height: 1.5;
+      pointer-events: auto;
+    }
+    .hud-panel h3 {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #888;
+      margin-bottom: 6px;
+    }
+    .hud-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .hud-label { font-size: 10px; color: #888; }
+    .hud-row { display: flex; align-items: baseline; gap: 8px; }
+
+    /* Status colours */
+    .status-idle    { color: #9E9E9E; }
+    .status-running { color: #4CAF50; }
+    .status-fault   { color: #F44336; }
+    .status-unknown { color: #FF9800; }
+
+    /* FPS bar */
+    #fps-value { transition: color 0.3s; }
+    #fps-value.good { color: #4CAF50; }
+    #fps-value.ok   { color: #FF9800; }
+    #fps-value.bad  { color: #F44336; }
+
+    /* Legend */
+    #legend {
+      position: relative;
+      max-width: 220px;
+      pointer-events: auto;
+    }
+    .legend-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    #bottom-right-stack {
+      position: absolute; right: 16px; bottom: 16px; z-index: 100;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+      pointer-events: none;
+    }
+
+    /* Regime badge — positioned inside right stack */
+    #regime-badge {
+      position: relative;
+    }
+    .regime-chip {
+      background: rgba(10, 10, 10, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* Popup */
+    #popup {
+      position: absolute; z-index: 200;
+      background: rgba(10, 10, 10, 0.92);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 12px;
+      min-width: 200px;
+      display: none;
+      pointer-events: none;
+      transform: translate(-50%, -100%) translateY(-12px);
+    }
+    #popup::after {
+      content: '';
+      position: absolute; bottom: -6px; left: 50%;
+      transform: translateX(-50%) rotate(45deg);
+      width: 10px; height: 10px;
+      background: rgba(10, 10, 10, 0.92);
+      border-right: 1px solid rgba(255, 255, 255, 0.12);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .popup-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+    .popup-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+    .popup-key { color: #888; }
+    .popup-val { font-weight: 500; text-align: right; }
+
+    /* Polling indicator */
+    #poll-indicator {
+      position: relative;
+      pointer-events: auto;
+    }
+    .poll-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #4CAF50;
+      display: inline-block;
+      margin-right: 6px;
+      transition: background 0.3s;
+    }
+    .poll-dot.stale { background: #FF9800; }
+    .poll-dot.error { background: #F44336; }
+
+    /* ── Stress Test Panel ── */
+    #stress-panel {
+      position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 100;
+    }
+    #stress-panel .hud-panel { min-width: 380px; }
+    .slider-row {
+      display: flex; align-items: center; gap: 12px; margin-top: 8px;
+    }
+    .slider-row input[type="range"] {
+      flex: 1; height: 6px; -webkit-appearance: none; appearance: none;
+      background: rgba(255,255,255,0.1); border-radius: 3px; outline: none;
+    }
+    .slider-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #42A5F5; cursor: pointer; border: 2px solid #1565C0;
+    }
+    .truck-count-display {
+      font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums;
+      color: #42A5F5; min-width: 70px; text-align: right;
+    }
+    .truck-multiplier {
+      font-size: 11px; color: #666; font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Performance Stats Panel ── */
+    #perf-stats {
+      position: absolute; top: 16px; right: 16px; z-index: 100;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    #perf-stats .hud-panel { min-width: 240px; }
+    .fps-graph-container {
+      height: 40px; display: flex; align-items: flex-end; gap: 1px;
+      background: rgba(255,255,255,0.03); border-radius: 4px;
+      padding: 2px; margin-top: 6px;
+    }
+    .fps-bar {
+      flex: 1; min-width: 2px; border-radius: 1px 1px 0 0;
+      transition: height 0.15s ease-out;
+    }
+    .stat-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin-top: 8px;
+    }
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stat-label { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; }
+    .stat-value.good { color: #4CAF50; }
+    .stat-value.ok { color: #FF9800; }
+    .stat-value.bad { color: #F44336; }
+
+    /* ── Animation Controls ── */
+    #anim-panel {
+      position: absolute; top: 16px; left: 16px; z-index: 101;
+      margin-top: 0;
+    }
+    #anim-panel .hud-panel { min-width: 260px; }
+    .anim-play-btn {
+      width: 100%; padding: 8px; border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px; background: rgba(255,255,255,0.06);
+      color: #e0e0e0; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; letter-spacing: 0.04em;
+    }
+    .anim-play-btn:hover { background: rgba(255,255,255,0.12); }
+    .anim-play-btn.active { background: rgba(76,175,80,0.2); border-color: rgba(76,175,80,0.4); color: #81C784; }
+    .anim-control { margin-top: 10px; }
+    .anim-control-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 4px;
+    }
+    .anim-control-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.06em; }
+    .anim-control-value { font-size: 11px; color: #ccc; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .anim-control input[type="range"] {
+      width: 100%; height: 4px; -webkit-appearance: none; appearance: none;
+      background: rgba(255,255,255,0.1); border-radius: 2px; outline: none;
+    }
+    .anim-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #81C784; cursor: pointer; border: 2px solid #388E3C;
+    }
+    .anim-toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 10px;
+    }
+    .anim-toggle {
+      position: relative; width: 36px; height: 20px;
+    }
+    .anim-toggle input { opacity: 0; width: 0; height: 0; }
+    .anim-toggle-slider {
+      position: absolute; inset: 0; cursor: pointer;
+      background: rgba(255,255,255,0.1); border-radius: 10px;
+      transition: background 0.2s;
+    }
+    .anim-toggle-slider::before {
+      content: ''; position: absolute; left: 2px; top: 2px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #666; transition: all 0.2s;
+    }
+    .anim-toggle input:checked + .anim-toggle-slider { background: rgba(76,175,80,0.3); }
+    .anim-toggle input:checked + .anim-toggle-slider::before { transform: translateX(16px); background: #81C784; }
+
+    #filter-panel {
+      position: absolute; top: 254px; left: 16px; z-index: 101;
+    }
+    #filter-panel .hud-panel { min-width: 260px; }
+
+    #truck-editor-panel {
+      position: absolute; top: 16px; left: 292px; z-index: 101;
+      display: none;
+    }
+    #truck-editor-panel .hud-panel { min-width: 320px; }
+    .editor-muted { font-size: 11px; color: #777; }
+    .editor-grid {
+      display: grid; grid-template-columns: 96px 1fr; gap: 8px 12px; align-items: center;
+      margin-top: 10px;
+    }
+    .editor-grid label {
+      font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .editor-grid select {
+      width: 100%; padding: 7px 8px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06); color: #e0e0e0;
+    }
+    .editor-actions {
+      display: flex; gap: 8px; margin-top: 12px;
+    }
+    .editor-btn {
+      flex: 1; padding: 8px 10px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.06);
+      color: #e0e0e0; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .editor-btn:hover { background: rgba(255,255,255,0.12); }
+    .editor-btn.primary { background: rgba(66,165,245,0.18); border-color: rgba(66,165,245,0.35); color: #8CC8FF; }
+    .editor-btn.active { background: rgba(76,175,80,0.2); border-color: rgba(76,175,80,0.35); color: #A5D6A7; }
+    .editor-preview {
+      width: 120px; height: 120px; display: block; margin: 10px auto 0;
+      image-rendering: auto; background: rgba(255,255,255,0.02); border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    @media (max-width: 1320px) {
+      #bottom-left-stack {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      #legend {
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Animation Controls -->
+  <div id="anim-panel">
+    <div class="hud-panel">
+      <h3>Animation Controls</h3>
+      <button id="anim-play-btn" class="anim-play-btn">▶ Play</button>
+
+      <div class="anim-control">
+        <div class="anim-control-header">
+          <span class="anim-control-label">Haul Speed</span>
+          <span id="anim-movement-val" class="anim-control-value">50 m/s</span>
+        </div>
+        <input type="range" id="anim-movement" min="0" max="200" value="50" step="5" />
+      </div>
+
+      <div class="anim-control">
+        <div class="anim-control-header">
+          <span class="anim-control-label">Update Rate</span>
+          <span id="anim-update-rate-val" class="anim-control-value">60 hz</span>
+        </div>
+        <input type="range" id="anim-update-rate" min="1" max="60" value="60" step="1" />
+      </div>
+
+      <div class="anim-toggle-row">
+        <span class="anim-control-label">Cycle Status Colours</span>
+        <label class="anim-toggle">
+          <input type="checkbox" id="anim-status-cycle" />
+          <span class="anim-toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div id="filter-panel">
+    <div class="hud-panel">
+      <h3>Map Filter</h3>
+      <div class="anim-toggle-row" style="margin-top:0;">
+        <span class="anim-control-label">Haul trucks only</span>
+        <label class="anim-toggle">
+          <input type="checkbox" id="filter-trucks-only" checked />
+          <span class="anim-toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div id="truck-editor-panel">
+    <div class="hud-panel">
+      <h3>Truck Inspector</h3>
+      <div id="truck-editor-title" class="hud-row" style="justify-content:space-between; align-items:center;">
+        <span style="font-weight:700;">No truck selected</span>
+      </div>
+      <div id="truck-editor-subtitle" class="editor-muted">Click a haul truck on the map to inspect or override its atlas permutation.</div>
+      <canvas id="truck-preview-canvas" class="editor-preview" width="120" height="120"></canvas>
+      <div class="editor-grid">
+        <label for="truck-row-select">Visual row</label>
+        <select id="truck-row-select" disabled></select>
+        <label for="truck-dot-select">Dot variant</label>
+        <select id="truck-dot-select" disabled></select>
+        <label for="truck-material-select">Material</label>
+        <select id="truck-material-select" disabled></select>
+      </div>
+      <div class="editor-actions">
+        <button id="truck-apply-btn" class="editor-btn primary" disabled>Apply</button>
+        <button id="truck-reset-btn" class="editor-btn" disabled>Reset</button>
+      </div>
+      <div class="editor-actions" style="margin-top:8px;">
+        <button id="truck-follow-btn" class="editor-btn" disabled>Follow selected</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottom-left-stack">
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-panel">
+        <h3>Fleet</h3>
+        <div class="hud-row">
+          <span id="fleet-count" class="hud-value">0</span>
+          <span class="hud-label">machines</span>
+        </div>
+        <div style="margin-top: 6px;">
+          <div class="hud-row"><span class="status-running">●</span> <span id="count-running">0</span> <span class="hud-label">running</span></div>
+          <div class="hud-row"><span class="status-idle">●</span> <span id="count-idle">0</span> <span class="hud-label">idle</span></div>
+          <div class="hud-row"><span class="status-fault">●</span> <span id="count-fault">0</span> <span class="hud-label">fault</span></div>
+        </div>
+      </div>
+
+      <div class="hud-panel">
+        <h3>View</h3>
+        <div class="hud-row">
+          <span class="hud-label">Zoom:</span>
+          <span id="view-zoom" style="font-variant-numeric: tabular-nums;">—</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Resolution:</span>
+          <span id="view-resolution" style="font-variant-numeric: tabular-nums;">—</span>
+          <span class="hud-label">m/px</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Mode:</span>
+          <span id="view-render-mode" style="font-variant-numeric: tabular-nums;">—</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Centre:</span>
+          <span id="view-centre" style="font-variant-numeric: tabular-nums;">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div id="legend" class="hud-panel">
+      <h3>Legend</h3>
+      <div class="legend-row"><div class="legend-dot" style="background:#4CAF50"></div> Running</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#9E9E9E"></div> Idle / Off</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#F44336"></div> Fault</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#FF9800"></div> Unknown</div>
+      <div class="legend-row" style="margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px;">
+        <div class="legend-dot" style="background:#42A5F5"></div> Loaded
+      </div>
+      <div class="legend-row"><div class="legend-dot" style="background:#78909C; border: 1px dashed #aaa;"></div> Empty</div>
+      <div class="legend-row" style="margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px;">
+        <div class="legend-dot" style="background:#e0e0e0; clip-path: polygon(0 50%, 70% 0, 100% 50%, 70% 100%);"></div> Overview truck marker
+      </div>
+    </div>
+  </div>
+
+  <!-- Stress Test Slider -->
+  <div id="stress-panel">
+    <div class="hud-panel">
+      <h3>Sprite Stress Test</h3>
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span id="truck-count-display" class="truck-count-display">0</span>
+        <span class="hud-label">total sprites on map</span>
+      </div>
+      <div class="slider-row">
+        <span class="hud-label" style="white-space: nowrap;">1×</span>
+        <input type="range" id="truck-slider" min="1" max="100" value="1" step="1" />
+        <span class="hud-label" style="white-space: nowrap;">100×</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+        <span id="multiplier-label" class="truck-multiplier">1× multiplier</span>
+        <span id="base-count-label" class="truck-multiplier">base: 0 machines</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Performance Stats -->
+  <div id="perf-stats">
+    <div class="hud-panel">
+      <h3>Performance</h3>
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span id="perf-fps" class="hud-value good">60</span>
+        <span class="hud-label">FPS</span>
+        <span id="perf-fps-avg" class="hud-label" style="margin-left: auto;">avg: —</span>
+      </div>
+      <div id="fps-graph" class="fps-graph-container"></div>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <span id="perf-frame-time" class="stat-value good">16.7</span>
+          <span class="stat-label">Frame Time (ms)</span>
+        </div>
+        <div class="stat-item">
+          <span id="perf-reconcile" class="stat-value">0.0</span>
+          <span class="stat-label">Reconcile (ms)</span>
+        </div>
+        <div class="stat-item">
+          <span id="perf-min-fps" class="stat-value">—</span>
+          <span class="stat-label">Min FPS (60s)</span>
+        </div>
+        <div class="stat-item">
+          <span id="perf-p1-fps" class="stat-value">—</span>
+          <span class="stat-label">P1 FPS (60s)</span>
+        </div>
+        <div class="stat-item">
+          <span id="perf-features" class="stat-value">0</span>
+          <span class="stat-label">Features</span>
+        </div>
+        <div class="stat-item">
+          <span id="perf-memory" class="stat-value">—</span>
+          <span class="stat-label">Memory (MB)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottom-right-stack">
+    <!-- Regime badge -->
+    <div id="regime-badge">
+      <div id="regime-chip" class="regime-chip">Regime 1 — Overview</div>
+    </div>
+
+    <!-- Polling indicator -->
+    <div id="poll-indicator" class="hud-panel">
+      <span class="poll-dot" id="poll-dot"></span>
+      <span id="poll-status">Polling active</span>
+      <span class="hud-label" id="poll-age" style="margin-left: 6px;">0s ago</span>
+    </div>
+  </div>
+
+  <!-- Popup -->
+  <div id="popup">
+    <div class="popup-title" id="popup-title">—</div>
+    <div class="popup-grid" id="popup-grid"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

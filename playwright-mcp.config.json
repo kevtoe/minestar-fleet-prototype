@@ -1,0 +1,22 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "isolated": false,
+    "launchOptions": {
+      "headless": false
+    },
+    "contextOptions": {
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    }
+  },
+  "capabilities": ["core", "vision"],
+  "timeouts": {
+    "action": 5000,
+    "navigation": 60000
+  },
+  "outputDir": "./vision-output",
+  "saveTrace": true
+}

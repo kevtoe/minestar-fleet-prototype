@@ -1,0 +1,20 @@
+{
+  "name": "@minestar/fleet-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MineStar Symbology Engine — WebGL Sprite Rendering Prototype",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "convert-data": "node scripts/convert_csv.cjs",
+    "vision:review": "node scripts/gemini-vision-review.mjs"
+  },
+  "dependencies": {
+    "ol": "^10.5.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
