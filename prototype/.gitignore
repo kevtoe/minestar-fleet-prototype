@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.vercel/
+vision-output/
+*.log
+.DS_Store

@@ -24,12 +24,11 @@ import Style from 'ol/style/Style.js';
 import Text from 'ol/style/Text.js';
 import Fill from 'ol/style/Fill.js';
 import Stroke from 'ol/style/Stroke.js';
-import Icon from 'ol/style/Icon.js';
 
 import { mineProjection, MINE_CENTRE, REGIME_THRESHOLDS } from './projection.js';
 import { generateSpriteAtlas } from './sprite-atlas.js';
 import { getTruckComposedAtlas } from './truck-atlas.js';
-import { regime1Style, createRegime2Style, createRegime3Style, createTruckStyle } from './styles.js';
+import { regime1Style, createRegime2Style, createRegime3Style, createTruckStyle, createOverviewTruckStyle } from './styles.js';
 import { PollingService, reconcileFeatures } from './polling.js';
 import { PerformanceMonitor } from './performance.js';
 import { multiplyRecords, initStressTestSlider } from './stress-test.js';
@@ -60,6 +59,14 @@ let truckOnlyMode = true;
 
 // ═══════════════════════════════════════════════════
 // 3. Create layers for each LOD regime
+//
+// GPU Animation Strategy:
+// ─────────────────────────────────────────────────
+// All sprite layers use WebGLVectorLayer for GPU-accelerated rendering.
+// updateWhileAnimating + updateWhileInteracting ensure layers continue
+// to render during view animations (zoom/pan) and user interactions,
+// which is critical for a continuously-changing minesite where trucks
+// never stop moving.
 // ═══════════════════════════════════════════════════
 
 // Regime 1 — Overview (circles) — visible when zoomed out
@@ -68,29 +75,19 @@ const regime1Layer = new WebGLVectorLayer({
   style: regime1Style,
   maxResolution: 100,
   minResolution: LODFadeBoundary('overview-low'),
+  updateWhileAnimating: true,
+  updateWhileInteracting: true,
   properties: { name: 'regime1' },
 });
 
-const overviewTruckLayer = new VectorLayer({
+// Overview truck layer — WebGL for GPU-accelerated rendering at all zoom levels
+const overviewTruckLayer = new WebGLVectorLayer({
   source: machineSource,
-  style: (feature, resolution) => {
-    if (!feature.get('showOnMap') || !feature.get('isTruck')) return null;
-
-    const heading = (feature.get('heading') || 0) - Math.PI / 2;
-    const scale = resolution >= 25 ? 0.8 : resolution >= 12 ? 0.95 : 1.1;
-
-    return new Style({
-      image: new Icon({
-        src: siteMapTruckIcon,
-        anchor: [0.5, 0.5],
-        rotation: heading,
-        rotateWithView: false,
-        scale,
-      }),
-    });
-  },
+  style: createOverviewTruckStyle(siteMapTruckIcon),
   maxResolution: 100,
   minResolution: 0,
+  updateWhileAnimating: true,
+  updateWhileInteracting: true,
   properties: { name: 'truck-overview' },
 });
 
@@ -101,6 +98,8 @@ const regime2Layer = new WebGLVectorLayer({
   style: regime2Style,
   maxResolution: LODFadeBoundary('overview-high'),
   minResolution: LODFadeBoundary('detail-low'),
+  updateWhileAnimating: true,
+  updateWhileInteracting: true,
   properties: { name: 'regime2' },
 });
 
@@ -109,6 +108,8 @@ const truckRegime2BaseLayer = new WebGLVectorLayer({
   style: createTruckStyle(truckAtlas, false),
   maxResolution: LODFadeBoundary('overview-high'),
   minResolution: LODFadeBoundary('detail-low'),
+  updateWhileAnimating: true,
+  updateWhileInteracting: true,
   properties: { name: 'truck-regime2' },
 });
 
@@ -118,6 +119,8 @@ const regime3Layer = new WebGLVectorLayer({
   source: machineSource,
   style: regime3Style,
   maxResolution: LODFadeBoundary('detail-high'),
+  updateWhileAnimating: true,
+  updateWhileInteracting: true,
   properties: { name: 'regime3' },
 });
 
@@ -125,6 +128,8 @@ const truckRegime3BaseLayer = new WebGLVectorLayer({
   source: machineSource,
   style: createTruckStyle(truckAtlas, true),
   maxResolution: LODFadeBoundary('detail-high'),
+  updateWhileAnimating: true,
+  updateWhileInteracting: true,
   properties: { name: 'truck-regime3' },
 });
 
@@ -146,6 +151,8 @@ const labelLayer = new VectorLayer({
     });
   },
   declutter: true,
+  updateWhileAnimating: true,
+  updateWhileInteracting: true,
   properties: { name: 'labels' },
 });
 
@@ -189,6 +196,7 @@ perfMonitor.attachToMap(map);
 let baseRecords = [];
 let currentRecordsByOid = new Map();
 const animEngine = new AnimationEngine(machineSource);
+animEngine.setPerfMonitor(perfMonitor);
 const truckOverrides = new Map();
 const selectedTruckOids = new Set();
 let primarySelectedTruckOid = null;
@@ -202,9 +210,16 @@ const stressTest = initStressTestSlider({
   getBaseRecords: () => baseRecords,
   onMultipliedUpdate: (records) => {
     currentRecordsByOid = new Map(records.map((record) => [record.OID, record]));
-    const stats = reconcileFeatures(machineSource, records);
+    const reconcileOpts = {
+      onChanged: () => {
+        perfMonitor.recordGPUBufferRebuild();
+        animEngine.invalidateFeatureCache();
+      },
+    };
+    const stats = reconcileFeatures(machineSource, records, reconcileOpts);
     applyTruckPresentation();
     applyVisibilityFilter();
+    // reconcileFeatures already called changed() — no extra call needed
     perfMonitor.recordReconcile(stats.durationMs);
     perfMonitor.setFeatureCount(machineSource.getFeatures().length);
     updateFleetStats();
@@ -215,27 +230,35 @@ const stressTest = initStressTestSlider({
   getFeatureCount: () => machineSource.getFeatures().length,
 });
 
-const poller = new PollingService({
-  url: '/data/machines.json',
-  intervalMs: 3000,
-  simulateMovement: true,
-  onUpdate: (records) => {
-    baseRecords = records;
-    const multiplied = multiplyRecords(records, stressTest.getMultiplier());
-    currentRecordsByOid = new Map(multiplied.map((record) => [record.OID, record]));
-    const stats = reconcileFeatures(machineSource, multiplied);
-    applyTruckPresentation();
-    applyVisibilityFilter();
-    perfMonitor.recordReconcile(stats.durationMs);
-    perfMonitor.setFeatureCount(machineSource.getFeatures().length);
-    updateFleetStats();
-    updatePollIndicator();
-    stressTest.updateDisplay();
+  const poller = new PollingService({
+    url: '/data/machines.json',
+    intervalMs: 3000,
+    simulateMovement: true,
+    onUpdate: (records) => {
+      baseRecords = records;
+      const multiplied = multiplyRecords(records, stressTest.getMultiplier());
+      currentRecordsByOid = new Map(multiplied.map((record) => [record.OID, record]));
+      const reconcileOpts = {
+        onChanged: () => {
+          perfMonitor.recordGPUBufferRebuild();
+          animEngine.invalidateFeatureCache();
+        },
+      };
+      const stats = reconcileFeatures(machineSource, multiplied, reconcileOpts);
+      applyTruckPresentation();
+      applyVisibilityFilter();
+      // Single batched change event for all mutations above
+      // (reconcileFeatures already calls changed() — skip double-fire)
+      perfMonitor.recordReconcile(stats.durationMs);
+      perfMonitor.setFeatureCount(machineSource.getFeatures().length);
+      updateFleetStats();
+      updatePollIndicator();
+      stressTest.updateDisplay();
 
-    if (stats.added > 0) {
-      console.log(`[Poll #${poller.pollCount}] +${stats.added} added, ${stats.updated} updated, -${stats.removed} removed (${stats.durationMs.toFixed(1)}ms)`);
-    }
-  },
+      if (stats.added > 0) {
+        console.log(`[Poll #${poller.pollCount}] +${stats.added} added, ${stats.updated} updated, -${stats.removed} removed (${stats.durationMs.toFixed(1)}ms)`);
+      }
+    },
   onError: (error) => {
     console.warn('[Poll Error]', error.message);
     const dot = document.getElementById('poll-dot');
@@ -249,6 +272,7 @@ const truckOnlyToggle = document.getElementById('filter-trucks-only');
 truckOnlyToggle?.addEventListener('change', () => {
   truckOnlyMode = truckOnlyToggle.checked;
   applyVisibilityFilter();
+  machineSource.changed();  // Single change event for user toggle
   updateFleetStats();
 });
 
@@ -354,7 +378,8 @@ function applyVisibilityFilter() {
   for (const feature of features) {
     feature.set('showOnMap', truckOnlyMode ? !!feature.get('isTruck') : true, true);
   }
-  machineSource.changed();
+  // NOTE: Callers should batch source.changed() after all mutations.
+  // Only fire here when called directly from user toggle (not from poll/stress batch).
 }
 
 function applyTruckPresentation() {
@@ -386,13 +411,14 @@ function applyTruckPresentation() {
       materialB: hasMaterial ? material.rgba[2] : 0,
       materialA: hasMaterial ? material.rgba[3] : 0,
       ...deriveTruckStateFromRow(rowIndex),
-    }, true);
+    }, true);  // silent=true — don't trigger per-feature change events
   }
   const primaryFeature = getPrimarySelectedTruckFeature();
   if (primaryFeature) {
     syncTruckEditorFromFeature(primaryFeature);
   }
-  machineSource.changed();
+  // NOTE: Removed machineSource.changed() here — callers are responsible for
+  // batching a single changed() call after all mutations are complete.
 }
 
 function updatePollIndicator(statusOverride) {
@@ -455,35 +481,37 @@ map.on('pointermove', (evt) => {
   }
 });
 
-map.on('click', (evt) => {
-  const pixel = map.getEventPixel(evt.originalEvent);
-  const feature = map.forEachFeatureAtPixel(pixel, (f) => f);
-  const multiSelect = evt.originalEvent.shiftKey || evt.originalEvent.metaKey || evt.originalEvent.ctrlKey;
+  map.on('click', (evt) => {
+    const pixel = map.getEventPixel(evt.originalEvent);
+    const feature = map.forEachFeatureAtPixel(pixel, (f) => f);
+    const multiSelect = evt.originalEvent.shiftKey || evt.originalEvent.metaKey || evt.originalEvent.ctrlKey;
 
-  if (feature && feature.get('showOnMap') && feature.get('isTruck')) {
-    const oid = feature.get('machineOid');
-    if (!oid) return;
+    if (feature && feature.get('showOnMap') && feature.get('isTruck')) {
+      const oid = feature.get('machineOid');
+      if (!oid) return;
 
-    if (multiSelect) {
-      if (selectedTruckOids.has(oid)) selectedTruckOids.delete(oid);
-      else selectedTruckOids.add(oid);
-    } else {
+      if (multiSelect) {
+        if (selectedTruckOids.has(oid)) selectedTruckOids.delete(oid);
+        else selectedTruckOids.add(oid);
+      } else {
+        selectedTruckOids.clear();
+        selectedTruckOids.add(oid);
+      }
+
+      primarySelectedTruckOid = oid;
+      applyTruckPresentation();
+      machineSource.changed();  // Single change for selection
+      updateTruckEditorVisibility();
+    } else if (!multiSelect) {
       selectedTruckOids.clear();
-      selectedTruckOids.add(oid);
+      primarySelectedTruckOid = null;
+      followSelectedTruck = false;
+      resetFollowCamera();
+      applyTruckPresentation();
+      machineSource.changed();  // Single change for deselection
+      updateTruckEditorVisibility();
     }
-
-    primarySelectedTruckOid = oid;
-    applyTruckPresentation();
-    updateTruckEditorVisibility();
-  } else if (!multiSelect) {
-    selectedTruckOids.clear();
-    primarySelectedTruckOid = null;
-    followSelectedTruck = false;
-    resetFollowCamera();
-    applyTruckPresentation();
-    updateTruckEditorVisibility();
-  }
-});
+  });
 
 function showPopup(feature, pixel) {
   if (!popupEl) return;
@@ -587,8 +615,8 @@ function initTruckEditor() {
     }
 
     const primary = getPrimarySelectedTruckFeature();
-    machineSource.changed();
     applyTruckPresentation();
+    machineSource.changed();  // Single change event for editor apply
     if (primary) syncTruckEditorFromFeature(primary);
   });
 
@@ -598,6 +626,7 @@ function initTruckEditor() {
       truckOverrides.delete(oid);
     }
     applyTruckPresentation();
+    machineSource.changed();  // Single change for reset
   });
 
   followBtn?.addEventListener('click', () => {

@@ -1,6 +1,17 @@
 /**
  * Animation engine — waypoint-based truck movement simulation.
  *
+ * Performance strategy for GPU-friendly continuous animation:
+ * ──────────────────────────────────────────────────────────
+ * 1. All feature property updates use silent=true to suppress per-feature
+ *    change events during the animation tick.
+ * 2. Geometry coordinates are updated via the internal flat-coordinates array
+ *    directly, bypassing OL's change-event dispatch on each setCoordinates().
+ * 3. A single source.changed() fires at the end of each tick, triggering
+ *    one WebGL vertex buffer rebuild per frame instead of N rebuilds for N features.
+ * 4. The animation tick cost is tracked and reported to the performance monitor.
+ * 5. Coordinate interpolation uses eased cubic for natural acceleration.
+ *
  * Each truck navigates its own randomised route through a procedurally
  * generated road network. Trucks steer toward waypoints, vary speed,
  * and occasionally stop (simulating load/dump cycles).
@@ -111,7 +122,7 @@ function createAgent(feature, speedScale) {
     ? neighbours[h % neighbours.length]
     : startNode;
 
-  // Per-truck speed variation (0.5× to 1.5× of base)
+  // Per-truck speed variation (0.5x to 1.5x of base)
   const speedMult = 0.5 + (h % 1000) / 1000;
 
   // Some trucks start stopped (simulating loading/dumping)
@@ -178,15 +189,29 @@ export class AnimationEngine {
     this.statusCycleRate = 1;
     this.updateRate = 60;
 
-    this._agents = new Map();   // oid → agent state
+    this._agents = new Map();   // oid -> agent state
     this._statusAccum = 0;
     this._updateAccum = 0;
+
+    // Performance monitoring hook
+    this._perfMonitor = null;
+
+    // Feature cache — avoids calling source.getFeatures() every frame
+    // which creates a new array. We rebuild this on reconcile/stress changes.
+    this._featureCache = [];
+    this._featureCacheDirty = true;
+  }
+
+  /** Attach performance monitor for animation tick cost tracking. */
+  setPerfMonitor(monitor) {
+    this._perfMonitor = monitor;
   }
 
   play() {
     if (this.playing) return;
     this.playing = true;
     this.lastTime = performance.now();
+    this._refreshFeatureCache();
     this._ensureAgents();
     this._tick();
   }
@@ -206,11 +231,25 @@ export class AnimationEngine {
   /** Rebuild agents when features change (multiplier slider) */
   rebuildAgents() {
     this._agents.clear();
+    this._featureCacheDirty = true;
     this._ensureAgents();
   }
 
+  /** Mark feature cache as stale — call after reconcile/add/remove. */
+  invalidateFeatureCache() {
+    this._featureCacheDirty = true;
+  }
+
+  _refreshFeatureCache() {
+    if (this._featureCacheDirty) {
+      this._featureCache = this.source.getFeatures();
+      this._featureCacheDirty = false;
+    }
+  }
+
   _ensureAgents() {
-    const features = this.source.getFeatures();
+    this._refreshFeatureCache();
+    const features = this._featureCache;
     for (const f of features) {
       const oid = f.get('machineOid') || f.getId();
       if (oid && !this._agents.has(oid)) {
@@ -236,7 +275,14 @@ export class AnimationEngine {
       if (this._updateAccum >= updateInterval) {
         const stepDt = this._updateAccum;
         this._updateAccum = 0;
+
+        const t0 = performance.now();
         this._updateFeatures(stepDt);
+        const cost = performance.now() - t0;
+
+        if (this._perfMonitor) {
+          this._perfMonitor.recordAnimationTick(cost);
+        }
       }
 
       this._tick();
@@ -244,7 +290,8 @@ export class AnimationEngine {
   }
 
   _updateFeatures(dt) {
-    const features = this.source.getFeatures();
+    this._refreshFeatureCache();
+    const features = this._featureCache;
     if (features.length === 0) return;
 
     const hasMovement = this.speedScale > 0;
@@ -253,6 +300,7 @@ export class AnimationEngine {
     if (!hasMovement && !hasStatusCycle) return;
 
     this._statusAccum += dt;
+    let anyChanged = false;
 
     for (const feature of features) {
       const oid = feature.get('machineOid') || feature.getId();
@@ -272,6 +320,7 @@ export class AnimationEngine {
         if (agent.stopTimer <= 0) {
           // Set to loading/dumping status briefly
           feature.set('statusIndex', Math.random() > 0.5 ? 3 : 4, true);
+          anyChanged = true;
         }
         continue; // truck is stopped
       }
@@ -304,6 +353,7 @@ export class AnimationEngine {
         if (isHub && Math.random() < 0.2) {
           agent.stopTimer = agent.stopDuration * (0.5 + Math.random());
           feature.set('statusIndex', 0, true); // idle while stopped
+          anyChanged = true;
           continue;
         }
 
@@ -323,12 +373,22 @@ export class AnimationEngine {
       const dy = agent.segEndY - agent.segStartY;
       const heading = Math.atan2(dx, dy); // atan2(east, north) = clockwise from north
 
+      // ── GPU-optimised geometry update ──
+      // Instead of calling geom.setCoordinates([nx, ny]) which dispatches a
+      // 'change' event on the geometry AND on the feature (triggering per-feature
+      // WebGL buffer invalidation), we directly mutate the internal flat
+      // coordinates array and batch a single source.changed() at the end.
       const geom = feature.getGeometry();
-      geom.setCoordinates([nx, ny]);
+      const flatCoords = geom.flatCoordinates;
+      flatCoords[0] = nx;
+      flatCoords[1] = ny;
+
+      // Silently update display properties (no per-feature events)
       feature.set('x', nx, true);
       feature.set('y', ny, true);
       feature.set('heading', (heading + TWO_PI) % TWO_PI, true);
       feature.set('speed', speed * 3.6 * (1 - Math.abs(et - 0.5) * 0.6), true); // km/h with accel curve
+      anyChanged = true;
     }
 
     // Status cycling (independent of movement)
@@ -342,9 +402,18 @@ export class AnimationEngine {
         const phase = ((this._statusAccum + offset) % period) / period;
         feature.set('statusIndex', Math.floor(phase * 6) % 6, true);
       }
+      anyChanged = true;
     }
 
-    this.source.changed();
+    // ── Single batched GPU buffer rebuild ──
+    // This fires ONE change event that tells all WebGL layers to rebuild
+    // their vertex buffers, rather than N events for N features.
+    if (anyChanged) {
+      this.source.changed();
+      if (this._perfMonitor) {
+        this._perfMonitor.recordGPUBufferRebuild();
+      }
+    }
   }
 }
 

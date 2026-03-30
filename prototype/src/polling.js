@@ -147,9 +147,10 @@ export class PollingService {
  *
  * @param {import('ol/source/Vector').default} source
  * @param {Array} records - Raw API records
+ * @param {{ onChanged?: () => void }} [options] - Optional hooks
  * @returns {{ added: number, updated: number, removed: number, durationMs: number }}
  */
-export function reconcileFeatures(source, records) {
+export function reconcileFeatures(source, records, options = {}) {
   const t0 = performance.now();
 
   const existingMap = new Map();
@@ -206,6 +207,7 @@ export function reconcileFeatures(source, records) {
 
   // Trigger a single change event
   source.changed();
+  if (options.onChanged) options.onChanged();
 
   const durationMs = performance.now() - t0;
   return { added, updated, removed, durationMs };

@@ -1,7 +1,8 @@
-node_modules/
-dist/
 .env
-.vercel/
-vision-output/
+prototype/vision-output/
 *.log
 .DS_Store
+node_modules/
+prototype/node_modules/
+prototype/dist/
+.vercel/

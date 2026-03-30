@@ -94,7 +94,6 @@ export function createOverviewTruckStyle(iconSrc) {
   return {
     'icon-src': iconSrc,
     'icon-size': [40, 40],
-    'icon-color': statusColorExpr,
     'icon-anchor': [0.5, 0.5],
     'icon-rotation': ['+', ['get', 'heading'], -Math.PI / 2],
     'icon-rotate-with-view': false,
@@ -106,9 +105,7 @@ export function createOverviewTruckStyle(iconSrc) {
       50, 0.48,
       100, 0.38,
     ],
-    'icon-opacity': [
-      ['case', ['get', 'showOnMap'], ['case', ['get', 'isTruck'], 1, 0], 0],
-    ],
+    'icon-opacity': ['case', ['get', 'showOnMap'], ['case', ['get', 'isTruck'], 1, 0], 0],
   };
 }
 

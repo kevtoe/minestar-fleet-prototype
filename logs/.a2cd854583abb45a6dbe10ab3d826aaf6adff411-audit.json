@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/kto/Downloads/_Projects_CAT_MineStar/CAT_Sprite/logs/.a2cd854583abb45a6dbe10ab3d826aaf6adff411-audit.json",
+    "files": [
+        {
+            "date": 1774829456206,
+            "name": "/Users/kto/Downloads/_Projects_CAT_MineStar/CAT_Sprite/logs/mcp-puppeteer-2026-03-30.log",
+            "hash": "a02a24eb4378893634916b78f20f765b6d62796bdd5021347cf3b521fe7aa5fe"
+        }
+    ],
+    "hashType": "sha256"
+}

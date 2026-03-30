@@ -447,8 +447,16 @@
           <span class="stat-label">Frame Time (ms)</span>
         </div>
         <div class="stat-item">
+          <span id="perf-anim-cost" class="stat-value good">0.0</span>
+          <span class="stat-label">Anim Tick (ms)</span>
+        </div>
+        <div class="stat-item">
           <span id="perf-reconcile" class="stat-value">0.0</span>
           <span class="stat-label">Reconcile (ms)</span>
+        </div>
+        <div class="stat-item">
+          <span id="perf-gpu-rebuilds" class="stat-value good">0</span>
+          <span class="stat-label">GPU Rebuilds/s</span>
         </div>
         <div class="stat-item">
           <span id="perf-min-fps" class="stat-value">—</span>
@@ -465,6 +473,24 @@
         <div class="stat-item">
           <span id="perf-memory" class="stat-value">—</span>
           <span class="stat-label">Memory (MB)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- GPU Status Panel -->
+    <div class="hud-panel">
+      <h3>GPU Rendering</h3>
+      <div class="stat-grid" style="grid-template-columns: 1fr;">
+        <div class="stat-item">
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span id="perf-gpu-status" class="stat-value good">Detecting...</span>
+            <span id="perf-gpu-version" class="stat-label" style="font-size: 10px;"></span>
+          </div>
+          <span class="stat-label">WebGL Status</span>
+        </div>
+        <div class="stat-item" style="margin-top: 4px;">
+          <span id="perf-gpu-renderer" class="stat-label" style="color: #aaa; font-size: 10px; text-transform: none; letter-spacing: 0; word-break: break-all;">—</span>
+          <span class="stat-label">GPU Renderer</span>
         </div>
       </div>
     </div>
