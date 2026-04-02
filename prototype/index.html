@@ -827,6 +827,9 @@
         toggle.classList.add('open');
         toggle.setAttribute('aria-expanded', 'true');
         toggle.textContent = '✕';
+        // Hide popup bottom-sheet so it doesn't peek behind the scrim
+        const popup = document.getElementById('popup');
+        if (popup) popup.style.display = 'none';
       }
 
       function closeDrawer() {
