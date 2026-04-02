@@ -192,6 +192,8 @@
       cursor: pointer; transition: all 0.15s; letter-spacing: 0.04em;
     }
     .anim-play-btn:hover { background: rgba(255,255,255,0.12); }
+    .anim-play-btn:active { background: rgba(255,255,255,0.20); transform: scale(0.96); }
+    .anim-play-btn:focus-visible { outline: 2px solid rgba(66,165,245,0.6); outline-offset: 2px; }
     .anim-play-btn.active { background: rgba(76,175,80,0.2); border-color: rgba(76,175,80,0.4); color: #81C784; }
     .anim-control { margin-top: 10px; }
     .anim-control-header {
@@ -229,6 +231,8 @@
     }
     .anim-toggle input:checked + .anim-toggle-slider { background: rgba(76,175,80,0.3); }
     .anim-toggle input:checked + .anim-toggle-slider::before { transform: translateX(16px); background: #81C784; }
+    .anim-toggle-slider:active { transform: scale(0.92); }
+    .anim-toggle input:focus-visible + .anim-toggle-slider { outline: 2px solid rgba(66,165,245,0.6); outline-offset: 2px; }
 
     #filter-panel {
       position: absolute; top: 254px; left: 16px; z-index: 101;
@@ -262,6 +266,8 @@
       color: #e0e0e0; font-size: 12px; font-weight: 600; cursor: pointer;
     }
     .editor-btn:hover { background: rgba(255,255,255,0.12); }
+    .editor-btn:active { background: rgba(255,255,255,0.20); transform: scale(0.96); }
+    .editor-btn:focus-visible { outline: 2px solid rgba(66,165,245,0.6); outline-offset: 2px; }
     .editor-btn.primary { background: rgba(66,165,245,0.18); border-color: rgba(66,165,245,0.35); color: #8CC8FF; }
     .editor-btn.active { background: rgba(76,175,80,0.2); border-color: rgba(76,175,80,0.35); color: #A5D6A7; }
     .editor-preview {
