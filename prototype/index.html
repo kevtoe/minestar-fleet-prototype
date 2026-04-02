@@ -280,10 +280,167 @@
         max-width: none;
       }
     }
+
+    /* ── Mobile responsive layout (≤480px) ── */
+    #mobile-hud-toggle {
+      display: none;
+    }
+
+    @media (max-width: 480px) {
+      /* Toggle button — always visible on mobile */
+      #mobile-hud-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 300;
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(10, 10, 10, 0.88);
+        backdrop-filter: blur(12px);
+        color: #e0e0e0;
+        font-size: 20px;
+        cursor: pointer;
+        pointer-events: auto;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
+      #mobile-hud-toggle:active {
+        background: rgba(255, 255, 255, 0.15);
+      }
+      #mobile-hud-toggle.open {
+        background: rgba(66, 165, 245, 0.25);
+        border-color: rgba(66, 165, 245, 0.4);
+      }
+
+      /* Drawer — slides in from left */
+      #mobile-drawer {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 250;
+        width: 100%;
+        max-width: 340px;
+        height: 100%;
+        padding: 68px 12px 12px;
+        background: rgba(10, 10, 10, 0.92);
+        backdrop-filter: blur(16px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease-out;
+        pointer-events: none;
+      }
+      #mobile-drawer.open {
+        transform: translateX(0);
+        pointer-events: auto;
+      }
+      /* Scrim behind drawer */
+      #mobile-scrim {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 240;
+        background: rgba(0, 0, 0, 0.4);
+        pointer-events: auto;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #mobile-scrim.open {
+        display: block;
+      }
+
+      /* Hide all desktop-positioned panels on mobile */
+      #anim-panel,
+      #filter-panel,
+      #stress-panel,
+      #perf-stats,
+      #bottom-left-stack,
+      #truck-editor-panel {
+        display: none !important;
+        position: static !important;
+      }
+
+      /* Panels inside drawer — override desktop positioning */
+      #mobile-drawer #anim-panel,
+      #mobile-drawer #filter-panel,
+      #mobile-drawer #stress-panel,
+      #mobile-drawer #perf-stats,
+      #mobile-drawer #bottom-left-stack,
+      #mobile-drawer #truck-editor-panel {
+        display: block !important;
+        position: static !important;
+        width: 100%;
+        margin: 0;
+        transform: none;
+      }
+      #mobile-drawer #perf-stats {
+        display: flex !important;
+        flex-direction: column;
+        gap: 8px;
+      }
+      #mobile-drawer #bottom-left-stack {
+        display: flex !important;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      #mobile-drawer #bottom-left-stack #hud,
+      #mobile-drawer #bottom-left-stack #legend {
+        width: 100%;
+      }
+      #mobile-drawer .hud-panel {
+        min-width: 0 !important;
+        width: 100%;
+      }
+      #mobile-drawer #stress-panel .hud-panel {
+        min-width: 0;
+      }
+      #mobile-drawer #truck-editor-panel .hud-panel {
+        min-width: 0;
+      }
+
+      /* Bottom-right stack — stays visible but repositioned for mobile */
+      #bottom-right-stack {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        width: auto;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        pointer-events: auto;
+      }
+
+      /* Popup — position at bottom of screen on mobile */
+      #popup {
+        left: 12px !important;
+        right: 12px !important;
+        bottom: 80px !important;
+        top: auto !important;
+        transform: none !important;
+        width: auto !important;
+        max-width: none !important;
+      }
+      #popup::after {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+
+  <!-- Mobile HUD toggle + drawer -->
+  <button id="mobile-hud-toggle" aria-label="Toggle HUD panels">☰</button>
+  <div id="mobile-scrim"></div>
+  <div id="mobile-drawer"></div>
 
   <!-- Animation Controls -->
   <div id="anim-panel">
@@ -517,5 +674,79 @@
   </div>
 
   <script type="module" src="/src/main.js"></script>
+  <script>
+    // ── Mobile HUD drawer ──
+    // On mobile (≤480px), move panels into a sliding drawer to prevent overlaps.
+    (function initMobileDrawer() {
+      const MQ = window.matchMedia('(max-width: 480px)');
+      const toggle = document.getElementById('mobile-hud-toggle');
+      const drawer = document.getElementById('mobile-drawer');
+      const scrim = document.getElementById('mobile-scrim');
+      if (!toggle || !drawer || !scrim) return;
+
+      const panelIds = [
+        'anim-panel', 'filter-panel', 'stress-panel',
+        'perf-stats', 'bottom-left-stack', 'truck-editor-panel',
+      ];
+
+      // Store original parent + next sibling so we can restore on resize back to desktop
+      const originalPositions = new Map();
+
+      function moveToDrawer() {
+        for (const id of panelIds) {
+          const el = document.getElementById(id);
+          if (!el) continue;
+          if (!originalPositions.has(id)) {
+            originalPositions.set(id, { parent: el.parentNode, next: el.nextSibling });
+          }
+          drawer.appendChild(el);
+        }
+      }
+
+      function restoreToBody() {
+        for (const id of panelIds) {
+          const el = document.getElementById(id);
+          const pos = originalPositions.get(id);
+          if (!el || !pos) continue;
+          if (pos.next) {
+            pos.parent.insertBefore(el, pos.next);
+          } else {
+            pos.parent.appendChild(el);
+          }
+        }
+        closeDrawer();
+      }
+
+      function openDrawer() {
+        drawer.classList.add('open');
+        scrim.classList.add('open');
+        toggle.classList.add('open');
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.textContent = '✕';
+      }
+
+      function closeDrawer() {
+        drawer.classList.remove('open');
+        scrim.classList.remove('open');
+        toggle.classList.remove('open');
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.textContent = '☰';
+      }
+
+      toggle.addEventListener('click', () => {
+        if (drawer.classList.contains('open')) closeDrawer();
+        else openDrawer();
+      });
+      scrim.addEventListener('click', closeDrawer);
+
+      function onMediaChange(e) {
+        if (e.matches) moveToDrawer();
+        else restoreToBody();
+      }
+
+      MQ.addEventListener('change', onMediaChange);
+      if (MQ.matches) moveToDrawer();
+    })();
+  </script>
 </body>
 </html>
