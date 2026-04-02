@@ -294,6 +294,132 @@
       }
     }
 
+    /* ── Tablet responsive layout (481–1024px) ── */
+
+    /* Tablet column containers — hidden by default, shown only at tablet widths */
+    #tablet-left-col,
+    #tablet-right-col {
+      display: none;
+    }
+
+    @media (max-width: 1024px) and (min-width: 481px) {
+
+      /* Hide all desktop-positioned panels — they move into tablet columns */
+      #anim-panel,
+      #filter-panel,
+      #stress-panel,
+      #perf-stats,
+      #bottom-left-stack {
+        display: none !important;
+        position: static !important;
+      }
+      /* Truck editor is display:none by default; just reset positioning */
+      #truck-editor-panel {
+        position: static !important;
+      }
+
+      /* Tablet column containers */
+      #tablet-left-col,
+      #tablet-right-col {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        position: absolute;
+        top: 12px;
+        z-index: 100;
+        max-height: calc(100vh - 70px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        pointer-events: none;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,0.2) transparent;
+      }
+      #tablet-left-col::-webkit-scrollbar,
+      #tablet-right-col::-webkit-scrollbar {
+        width: 4px;
+      }
+      #tablet-left-col::-webkit-scrollbar-thumb,
+      #tablet-right-col::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.2);
+        border-radius: 2px;
+      }
+
+      #tablet-left-col {
+        left: 12px;
+        width: 240px;
+      }
+      #tablet-right-col {
+        right: 12px;
+        width: 220px;
+      }
+
+      /* Panels inside tablet columns — override desktop positioning */
+      #tablet-left-col > *,
+      #tablet-right-col > * {
+        position: static !important;
+        width: 100%;
+        margin: 0;
+        transform: none;
+        pointer-events: auto;
+      }
+      /* Re-show panels that were hidden (except truck-editor — it uses inline style) */
+      #tablet-left-col > #anim-panel,
+      #tablet-left-col > #filter-panel,
+      #tablet-left-col > #stress-panel,
+      #tablet-left-col > #bottom-left-stack,
+      #tablet-right-col > #perf-stats {
+        display: block !important;
+      }
+
+      /* Perf-stats in tablet right col needs flex for its children */
+      #tablet-right-col #perf-stats {
+        display: flex !important;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      /* Bottom-left-stack in tablet left col */
+      #tablet-left-col #bottom-left-stack {
+        display: flex !important;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      #tablet-left-col #bottom-left-stack #hud,
+      #tablet-left-col #bottom-left-stack #legend {
+        width: 100%;
+      }
+
+      /* Remove min-width constraints inside tablet columns */
+      #tablet-left-col .hud-panel,
+      #tablet-right-col .hud-panel {
+        min-width: 0 !important;
+        width: 100%;
+      }
+
+      /* Compact the truck count display */
+      .truck-count-display {
+        font-size: 22px;
+      }
+
+      /* Compact stat values */
+      .stat-value {
+        font-size: 14px;
+      }
+
+      /* Slider row: tighter */
+      .slider-row {
+        gap: 8px;
+      }
+
+      /* Bottom-right stays visible */
+      #bottom-right-stack {
+        right: 12px;
+        bottom: 12px;
+      }
+    }
+
     /* ── Mobile responsive layout (≤480px) ── */
     #mobile-hud-toggle {
       display: none;
@@ -544,6 +670,10 @@
   <button id="mobile-hud-toggle" aria-label="Toggle HUD panels">☰</button>
   <div id="mobile-scrim"></div>
   <div id="mobile-drawer"></div>
+
+  <!-- Tablet two-column containers (481–1024px) -->
+  <div id="tablet-left-col"></div>
+  <div id="tablet-right-col"></div>
 
   <!-- Animation Controls -->
   <div id="anim-panel">
@@ -853,6 +983,63 @@
 
       MQ.addEventListener('change', onMediaChange);
       if (MQ.matches) moveToDrawer();
+    })();
+
+    // ── Tablet two-column layout ──
+    // At 481–1024px, move panels into two scrollable columns to prevent overlaps.
+    (function initTabletLayout() {
+      const MQ_TABLET = window.matchMedia('(max-width: 1024px) and (min-width: 481px)');
+      const leftCol = document.getElementById('tablet-left-col');
+      const rightCol = document.getElementById('tablet-right-col');
+      if (!leftCol || !rightCol) return;
+
+      // Left column: anim → filter → stress → fleet/view/legend
+      const leftPanelIds = ['anim-panel', 'filter-panel', 'stress-panel', 'bottom-left-stack'];
+      // Right column: perf stats (truck-editor is display:none by default, include for when it opens)
+      const rightPanelIds = ['perf-stats', 'truck-editor-panel'];
+
+      const originalPositions = new Map();
+
+      function moveToTabletColumns() {
+        for (const id of leftPanelIds) {
+          const el = document.getElementById(id);
+          if (!el) continue;
+          if (!originalPositions.has(id)) {
+            originalPositions.set(id, { parent: el.parentNode, next: el.nextSibling });
+          }
+          leftCol.appendChild(el);
+        }
+        for (const id of rightPanelIds) {
+          const el = document.getElementById(id);
+          if (!el) continue;
+          if (!originalPositions.has(id)) {
+            originalPositions.set(id, { parent: el.parentNode, next: el.nextSibling });
+          }
+          rightCol.appendChild(el);
+        }
+      }
+
+      function restoreFromTablet() {
+        const allIds = [...leftPanelIds, ...rightPanelIds];
+        for (const id of allIds) {
+          const el = document.getElementById(id);
+          const pos = originalPositions.get(id);
+          if (!el || !pos) continue;
+          if (pos.next && pos.next.parentNode === pos.parent) {
+            pos.parent.insertBefore(el, pos.next);
+          } else {
+            pos.parent.appendChild(el);
+          }
+        }
+      }
+
+      function onTabletChange(e) {
+        if (e.matches) moveToTabletColumns();
+        else restoreFromTablet();
+      }
+
+      MQ_TABLET.addEventListener('change', onTabletChange);
+      if (MQ_TABLET.matches) moveToTabletColumns();
     })();
   </script>
 </body>
