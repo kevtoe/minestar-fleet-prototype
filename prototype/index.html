@@ -431,6 +431,91 @@
       #popup::after {
         display: none;
       }
+
+      /* ── Touch target fixes (WCAG 2.5.8 — 44×44px minimum) ── */
+
+      /* Play button: was 34px tall, now 44px */
+      .anim-play-btn {
+        min-height: 44px;
+        padding: 12px;
+        font-size: 14px;
+      }
+
+      /* Range sliders: use min-height on the input for proper 44px touch zone */
+      .anim-control input[type="range"] {
+        height: 44px;
+        padding: 0;
+        margin: -10px 0;
+        touch-action: pan-x;
+        /* Transparent track, visible track line painted by thumb travel */
+        background: transparent;
+      }
+      .anim-control input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 3px;
+      }
+      .anim-control input[type="range"]::-webkit-slider-thumb {
+        width: 28px;
+        height: 28px;
+        margin-top: -11px;
+      }
+      .slider-row input[type="range"] {
+        height: 44px;
+        padding: 0;
+        margin: -10px 0;
+        touch-action: pan-x;
+        background: transparent;
+      }
+      .slider-row input[type="range"]::-webkit-slider-runnable-track {
+        height: 8px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 4px;
+      }
+      .slider-row input[type="range"]::-webkit-slider-thumb {
+        width: 28px;
+        height: 28px;
+        margin-top: -10px;
+      }
+
+      /* Toggle switches: expand to 44×44 min touch area */
+      .anim-toggle {
+        width: 50px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+      }
+      .anim-toggle-slider {
+        width: 50px;
+        height: 28px;
+        border-radius: 14px;
+        top: 8px;
+      }
+      .anim-toggle-slider::before {
+        width: 22px;
+        height: 22px;
+        left: 3px;
+        top: 3px;
+      }
+      .anim-toggle input:checked + .anim-toggle-slider::before {
+        transform: translateX(22px);
+      }
+      /* Ensure the toggle row has 44px tap target */
+      .anim-toggle-row {
+        min-height: 44px;
+      }
+
+      /* Editor buttons: min 44px height */
+      .editor-btn {
+        min-height: 44px;
+        font-size: 13px;
+      }
+
+      /* Editor selects: min 44px height */
+      .editor-grid select {
+        min-height: 44px;
+        font-size: 14px;
+      }
     }
   </style>
 </head>
