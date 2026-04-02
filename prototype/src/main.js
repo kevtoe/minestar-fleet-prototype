@@ -462,8 +462,10 @@ function LODFadeBoundary(kind) {
 const popupEl = document.getElementById('popup');
 const popupTitle = document.getElementById('popup-title');
 const popupGrid = document.getElementById('popup-grid');
+const isMobile = () => window.matchMedia('(max-width: 480px)').matches;
 
 map.on('pointermove', (evt) => {
+  if (isMobile()) return;               // skip hover popup on touch devices
   if (evt.dragging) {
     hidePopup();
     return;
@@ -502,6 +504,14 @@ map.on('pointermove', (evt) => {
       applyTruckPresentation();
       machineSource.changed();  // Single change for selection
       updateTruckEditorVisibility();
+
+      // On mobile: show popup on tap (since pointermove/hover is unavailable)
+      if (isMobile()) {
+        showPopup(feature, evt.pixel);
+      }
+    } else if (feature && feature.get('showOnMap') && isMobile()) {
+      // Non-truck feature tapped on mobile — show info popup only
+      showPopup(feature, evt.pixel);
     } else if (!multiSelect) {
       selectedTruckOids.clear();
       primarySelectedTruckOid = null;
@@ -510,6 +520,7 @@ map.on('pointermove', (evt) => {
       applyTruckPresentation();
       machineSource.changed();  // Single change for deselection
       updateTruckEditorVisibility();
+      hidePopup();              // dismiss popup on tap-away
     }
   });
 
@@ -543,6 +554,15 @@ function showPopup(feature, pixel) {
 
 function hidePopup() {
   if (popupEl) popupEl.style.display = 'none';
+}
+
+// Close button for mobile popup
+const popupCloseBtn = document.getElementById('popup-close');
+if (popupCloseBtn) {
+  popupCloseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hidePopup();
+  });
 }
 
 function initTruckEditor() {

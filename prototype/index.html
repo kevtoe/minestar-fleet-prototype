@@ -113,6 +113,13 @@
     .popup-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
     .popup-key { color: #888; }
     .popup-val { font-weight: 500; text-align: right; }
+    #popup-close {
+      display: none; position: absolute; top: 8px; right: 8px;
+      width: 32px; height: 32px; border: none; border-radius: 50%;
+      background: rgba(255,255,255,0.1); color: #aaa; font-size: 18px;
+      cursor: pointer; line-height: 32px; text-align: center;
+    }
+    #popup-close:active { background: rgba(255,255,255,0.2); }
 
     /* Polling indicator */
     #poll-indicator {
@@ -433,9 +440,14 @@
         transform: none !important;
         width: auto !important;
         max-width: none !important;
+        pointer-events: auto !important;
+        border-radius: 14px;
       }
       #popup::after {
         display: none;
+      }
+      #popup-close {
+        display: block !important;
       }
 
       /* ── Touch target fixes (WCAG 2.5.8 — 44×44px minimum) ── */
@@ -760,6 +772,7 @@
 
   <!-- Popup -->
   <div id="popup">
+    <button id="popup-close" aria-label="Close popup">&times;</button>
     <div class="popup-title" id="popup-title">—</div>
     <div class="popup-grid" id="popup-grid"></div>
   </div>
